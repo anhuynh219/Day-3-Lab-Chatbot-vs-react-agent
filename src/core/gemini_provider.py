@@ -5,7 +5,7 @@ from typing import Dict, Any, Optional, Generator
 from src.core.llm_provider import LLMProvider
 
 class GeminiProvider(LLMProvider):
-    def __init__(self, model_name: str = "gemini-1.5-flash", api_key: Optional[str] = None):
+    def __init__(self, model_name: str = "gemini-2.5-flash", api_key: Optional[str] = None):
         super().__init__(model_name, api_key)
         genai.configure(api_key=self.api_key)
         self.model = genai.GenerativeModel(model_name)
@@ -24,12 +24,28 @@ class GeminiProvider(LLMProvider):
         end_time = time.time()
         latency_ms = int((end_time - start_time) * 1000)
 
-        # Gemini usage data is in response.usage_metadata
         content = response.text
+
+        # usage_metadata có thể không tồn tại tùy phiên bản SDK -> trích xuất an toàn
+        meta = (getattr(getattr(response, "_result", None), "usage_metadata", None)
+                or getattr(response, "usage_metadata", None))
+        prompt_tokens = getattr(meta, "prompt_token_count", 0) if meta else 0
+        completion_tokens = getattr(meta, "candidates_token_count", 0) if meta else 0
+        total_tokens = getattr(meta, "total_token_count", 0) if meta else 0
+
+        # Fallback: nếu SDK không trả token, ước lượng bằng count_tokens
+        if total_tokens == 0:
+            try:
+                prompt_tokens = self.model.count_tokens(full_prompt).total_tokens
+                completion_tokens = self.model.count_tokens(content).total_tokens
+                total_tokens = prompt_tokens + completion_tokens
+            except Exception:
+                pass
+
         usage = {
-            "prompt_tokens": response.usage_metadata.prompt_token_count,
-            "completion_tokens": response.usage_metadata.candidates_token_count,
-            "total_tokens": response.usage_metadata.total_token_count
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
         }
 
         return {
