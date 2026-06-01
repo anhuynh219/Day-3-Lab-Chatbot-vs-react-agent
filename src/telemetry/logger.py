@@ -1,8 +1,17 @@
 import logging
 import json
 import os
+import sys
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+
+# Console Windows mặc định là cp1252 -> ghi tiếng Việt sẽ ném UnicodeEncodeError.
+# Ép stdout/stderr về UTF-8 để log (và print) tiếng Việt không vỡ.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 
 class JSONFormatter(logging.Formatter):
@@ -39,10 +48,16 @@ class IndustryLogger:
         os.makedirs(self.log_dir, exist_ok=True)
 
         log_file = os.path.join(self.log_dir, f"{datetime.now().strftime('%Y-%m-%d')}.log")
-        file_handler = logging.FileHandler(log_file)
+        # encoding=utf-8: log tiếng Việt (mặc định FileHandler dùng cp1252 trên Windows -> lỗi)
+        file_handler = logging.FileHandler(log_file, encoding="utf-8")
         file_handler.setFormatter(JSONFormatter())
-        
+
         console_handler = logging.StreamHandler()
+        # Console Windows có thể là cp1252 -> ép stream về utf-8 (bỏ qua nếu không hỗ trợ)
+        try:
+            console_handler.stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+        except Exception:
+            pass
         console_handler.setFormatter(JSONFormatter())
         
         self.logger.addHandler(file_handler)
